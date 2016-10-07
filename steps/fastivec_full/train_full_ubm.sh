@@ -51,7 +51,7 @@ data=$1
 srcdir=$2
 dir=$3
 
-for f in $data/feats.scp $data/vad.scp; do
+for f in $data/feats.scp; do
   [ ! -f $f ] && echo "No such file $f" && exit 1;
 done
 
