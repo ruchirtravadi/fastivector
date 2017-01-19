@@ -115,5 +115,6 @@ if [ $stage -le 2 ]; then
   steps/fastivec_diag/est_from_stats.sh \
     --cleanup $cleanup_after_est \
     --q $q \
+    --ivec-dim $ivec_dim \
     $outdir/stats $outdir/ubm/final.dubm $outdir
 fi

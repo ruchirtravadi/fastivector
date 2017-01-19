@@ -20,6 +20,7 @@ cleanup=true
 binary=false
 est_opts=""
 q=1
+ivec_dim=400
 # End configuration section.
 
 echo "$0 $@"  # Print the command line for logging
@@ -60,7 +61,7 @@ fi
 if [ $stage -le 2 ]; then
   start=$SECONDS
   $cmd JOB=1:$nj $out_dir/log/est_y.JOB.log \
-    fast-ivector-full-randsvd-get-y $stats_dir/NS.stats ark:$stats_dir/stats_F.JOB $out_dir/Y.poweriter0.JOB.mat 
+    fast-ivector-full-randsvd-get-y --ivec-dim=$ivec_dim $stats_dir/NS.stats ark:$stats_dir/stats_F.JOB $out_dir/Y.poweriter0.JOB.mat 
   #Y_mats=("$out_dir"/Y.poweriter0.*.mat)
   matrix-sum $out_dir/Y.poweriter0.*.mat $out_dir/Y.poweriter0.mat
   echo "Obtained the Y matrix in  $(( SECONDS - start )) sec"
@@ -75,7 +76,7 @@ if [ $stage -le 3 ]; then
   for pow_it in `seq 1 ${q}`; do
     start=$SECONDS
     $cmd JOB=1:$nj $out_dir/log/pow_iter${q}.JOB.log \
-      fast-ivector-full-randsvd-power-iter $stats_dir/NS.stats ark:$stats_dir/stats_F.JOB $out_dir/Y.poweriter$((q-1)).mat $out_dir/Y.poweriter${q}.JOB.mat
+      fast-ivector-full-randsvd-power-iter --ivec-dim=$ivec_dim $stats_dir/NS.stats ark:$stats_dir/stats_F.JOB $out_dir/Y.poweriter$((q-1)).mat $out_dir/Y.poweriter${q}.JOB.mat
     matrix-sum $out_dir/Y.poweriter${q}.*.mat $out_dir/Y.poweriter${q}.mat
     echo "Power iteration ${q} finished in $(( SECONDS - start )) sec"
     if $cleanup; then
@@ -90,7 +91,7 @@ fi
 # Get the Q matrix
 if [ $stage -le 3 ]; then
   start=$SECONDS
-  fast-ivector-full-randsvd-get-q $out_dir/Y.poweriter${q}.mat $out_dir/Q.mat
+  fast-ivector-full-randsvd-get-q --ivec-dim=$ivec_dim $out_dir/Y.poweriter${q}.mat $out_dir/Q.mat
   echo "Obtained the Q matrix in  $(( SECONDS - start )) sec"
   if $cleanup; then
     rm $out_dir/Y.poweriter${q}.mat
@@ -101,13 +102,13 @@ fi
 if [ $stage -le 4 ]; then
   start=$SECONDS
   $cmd JOB=1:$nj $out_dir/log/est_b.JOB.log \
-    fast-ivector-full-randsvd-get-b $stats_dir/NS.stats ark:$stats_dir/stats_F.JOB $out_dir/Q.mat $out_dir/B.JOB.mat
+    fast-ivector-full-randsvd-get-b --ivec-dim=$ivec_dim $stats_dir/NS.stats ark:$stats_dir/stats_F.JOB $out_dir/Q.mat $out_dir/B.JOB.mat
   echo "Obtained the B matrices in  $(( SECONDS - start )) sec"
 fi
 
 # Get the final model by SVD
 if [ $stage -le 5 ]; then
-  fast-ivector-full-randsvd-est --binary=$binary $out_dir/B.* $out_dir/Q.mat $stats_dir/NS.stats $ubm_mdl $out_dir/ivec.mdl
+  fast-ivector-full-randsvd-est --binary=$binary --ivec-dim=$ivec_dim $out_dir/B.* $out_dir/Q.mat $stats_dir/NS.stats $ubm_mdl $out_dir/ivec.mdl
 fi
 
 if $cleanup; then

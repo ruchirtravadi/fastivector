@@ -19,6 +19,8 @@ cmd="run.pl"
 stage=-2
 num_gselect=30 # Gaussian-selection using diagonal model: number of Gaussians to select
 min_post=0.0001 # Minimum posterior to use (posteriors below this are pruned out)
+ivec_dim=-1
+vad_scp=
 # End configuration section.
 
 echo "$0 $@"  # Print the command line for logging
@@ -44,7 +46,7 @@ data=$1
 ivec_mdl_dir=$2
 ivec_out_dir=$3
 
-for f in $data/feats.scp $ivec_mdl_dir/ubm/final.dubm; do
+for f in $data/feats.scp $ivec_mdl_dir/ubm/final.ubm; do
   [ ! -f $f ] && echo "No such file $f" && exit 1;
 done
 mkdir -p $ivec_out_dir/log
@@ -84,7 +86,7 @@ fi
 if [ $stage -le 0 ]; then
   echo "$0: Extracting ivectors"
   $cmd JOB=1:$nj $ivec_out_dir/log/fastivec_extract.JOB.log \
-    fast-ivector-full-extract $ivec_mdl_dir/ivec.mdl "$feats" "ark:gunzip -c $ivec_out_dir/post.JOB.gz|" ark,scp:$ivec_out_dir/ivectors.JOB.ark,$ivec_out_dir/ivectors.JOB.scp || touch $ivec_out_dir/.error & 
+    fast-ivector-full-extract --ivec-dim="$ivec_dim" $ivec_mdl_dir/ivec.mdl "$feats" "ark:gunzip -c $ivec_out_dir/post.JOB.gz|" ark,scp:$ivec_out_dir/ivectors.JOB.ark,$ivec_out_dir/ivectors.JOB.scp || touch $ivec_out_dir/.error & 
   wait
   [ -f $ivec_out_dir/.error ] && echo "Error extracting ivectors" && rm $ivec_out_dir/.error && exit 1;
 fi
