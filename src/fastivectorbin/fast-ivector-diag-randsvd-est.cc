@@ -24,12 +24,15 @@ int main(int argc, char *argv[]) {
   typedef kaldi::int64 int64;
   try {
       const char *usage =
-      "Obtain Maximum Likelihood estimate of the parameters of a diagonal covariance fast ivector model from accumulated stats\n"
+      "Obtain Maximum Likelihood estimate of the parameters of a diagonal\n" 
+      "covariance fast ivector model from accumulated stats\n"
       "The algorithm is based on randomized SVD. For details, refer to : \n"
-      "\'\'Finding structure with randomness: Probabilistic algorithms for constructing approximate matrix decompositions\'\'\n"
-      "N Halko et al, SIAM 2011\n"
-      "Usage:  fast-ivector-diag-est-randsvd [options] <B1> <B2> ... <Bn> <Q> <NS-stats> <diag-ubm-rxfilename> <ivec-mdl-wxfilename> \n"
-      "e.g.: fast-ivector-diag-est-randsvd B.1.mat B.2.mat Q.mat NS.stats final.dubm fastivec.mdl\n";
+      "\'\'Finding structure with randomness: Probabilistic algorithms for\n" 
+      "constructing approximate matrix decompositions, N Halko et al, SIAM 2011\n"
+      "Usage:  fast-ivector-diag-randsvd-est [options] <B1> ... <Bn> <Q>\n"
+      "        <stats-NFS> <ivec-mdl-wxfilename> \n"
+      "e.g.: fast-ivector-diag-randsvd-est B.1.mat B.2.mat Q.mat\n" 
+      "      stats_NFS.global fastivec.mdl\n";
 
     ParseOptions po(usage);
     FastIvectorEstimationOptions est_opts;
@@ -38,16 +41,15 @@ int main(int argc, char *argv[]) {
     est_opts.Register(&po);
 
     po.Read(argc, argv);
-    if (po.NumArgs() < 5) {
+    if (po.NumArgs() < 4) {
       po.PrintUsage();
       exit(1);
     }
     std::string model_outfilename = po.GetArg(po.NumArgs()), 
-                diag_gmm_rxfilename = po.GetArg(po.NumArgs()-1),
-                stats_NS_rxfilename = po.GetArg(po.NumArgs()-2),
-                Q_rxfilename = po.GetArg(po.NumArgs()-3);
+                stats_NFS_rxfilename = po.GetArg(po.NumArgs()-1),
+                Q_rxfilename = po.GetArg(po.NumArgs()-2);
 
-    int32 num_matrices = po.NumArgs() - 4;
+    int32 num_matrices = po.NumArgs() - 3;
     Timer time;
     // Read and combine B matrices
     std::vector<Matrix<BaseFloat> > B_vec(num_matrices);
@@ -65,16 +67,16 @@ int main(int argc, char *argv[]) {
     }  
 
     // Read the zeroth and second order stats
-    FastIvectorDiagStats stats_NS;
-    stats_NS.Read(stats_NS_rxfilename);
-    int32 num_gauss = stats_NS.NumGauss(), feat_dim = stats_NS.FeatDim();
+    FastIvectorDiagStats stats_NFS;
+    stats_NFS.Read(stats_NFS_rxfilename);
+    int32 num_gauss = stats_NFS.NumGauss(), feat_dim = stats_NFS.FeatDim();
     std::vector<Vector<BaseFloat> > S(num_gauss);
     for(int32 c = 0; c < num_gauss; c++) {
-      stats_NS.GetS(&S[c],c);
+      stats_NFS.GetS(&S[c],c);
     }
     Vector<BaseFloat> N;
-    stats_NS.GetN(&N);
-    int64 num_utt = stats_NS.GetNumUtt();
+    stats_NFS.GetN(&N);
+    int64 num_utt = stats_NFS.GetNumUtt();
     BaseFloat avg_utt_dur =  N.Sum()/num_utt;
 
     // Read the Q Matrix
@@ -106,7 +108,8 @@ int main(int argc, char *argv[]) {
       if (D_T(i) > 0) {
         D_T(i) = sqrt(D_T(i));
       } else {
-        KALDI_WARN << "Unable to estimate " << k << " dimensional subspace. Returning subspace of dimension " << i << " instead.";
+        KALDI_WARN << "Unable to estimate " << k << " dimensional subspace." 
+                   << "Returning subspace of dimension " << i << " instead.";
         k = i;
         D_T = D_T.Range(0,k);
         U = U.Range(0,m,0,k);
@@ -121,9 +124,8 @@ int main(int argc, char *argv[]) {
     U.MulColsVec(D_T);
     Matrix<BaseFloat> &S_Inv_T(U);
     // Create and write the ivector model
-    DiagGmm diag_gmm;
-    ReadKaldiObject(diag_gmm_rxfilename, &diag_gmm);
-    Matrix<BaseFloat> M; diag_gmm.GetMeans(&M);
+    Vector<BaseFloat> F_mean; stats_NFS.GetF(F_mean);
+    Matrix<BaseFloat> M(num_gauss,feat_dim); M.CopyRowsFromVec(F_mean);
     FastIvectorDiag FastIvec_Model(M,S,S_Inv_T,D_T);
     FastIvec_Model.Write(model_outfilename,binary);    
     KALDI_LOG << "Final model obtained after SVD in " << time.Elapsed() - t << " s";

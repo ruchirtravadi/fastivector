@@ -130,5 +130,5 @@ if [ $stage -le 2 ]; then
     --cleanup $cleanup_after_est \
     --q $q \
     --ivec-dim $ivec_dim \
-    $outdir/stats $outdir/ubm/final.ubm $outdir
+    $outdir/stats $outdir
 fi

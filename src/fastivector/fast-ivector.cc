@@ -17,7 +17,6 @@
 
 namespace kaldi {
   void FastIvectorDiagStats::AccStatsForUtterance(std::string utt, const Matrix<BaseFloat> &feats, const Posterior &post) {
-    KALDI_ASSERT((Means_.NumRows() > 0) && (Means_.NumCols() > 0));
     KALDI_ASSERT(post.size() == feats.NumRows());
     int32 num_frames = post.size();
     Vector<BaseFloat> N_utt(num_gauss_,kSetZero);
@@ -28,9 +27,7 @@ namespace kaldi {
       for(int32 j = 0; j < post[i].size(); j++) {
         int32 c = post[i][j].first;
         double pc = post[i][j].second;
-        // Ftc = (Xt - Mc)
         Vector<BaseFloat> Ftc(frame);
-        Ftc.AddVec(-1,Means_.Row(c));
         KALDI_ASSERT(c < num_gauss_);
         SubVector<BaseFloat> Fc(F_utt,c*feat_dim_,feat_dim_);
         Fc.AddVec(pc,Ftc);
@@ -38,15 +35,15 @@ namespace kaldi {
         N_utt(c) = N_utt(c) + pc;
       }
     }
-
-    // Get the utterance specific mean
-    Vector<BaseFloat> M_utt(F_utt);
+    N_.AddVec(1.0,N_utt);
+    F_.AddVec(1.0,F_utt);
+    stats_N_writer_.Write(utt,N_utt);
+    N_utt.ApplyFloor(1e-3);
     for(int32 c = 0; c < num_gauss_; c++) {
-      SubVector<BaseFloat> Mc(M_utt,c*feat_dim_,feat_dim_);
-      Mc.AddVec(N_utt(c),Means_.Row(c));
-      if (N_utt(c) > 1e-3) { Mc.Scale(1.0/N_utt(c)); }
-      else Mc.Scale(1000);
+      SubVector<BaseFloat> Fc(F_utt,c*feat_dim_,feat_dim_);
+      Fc.Scale(1.0/N_utt(c));
     }
+    stats_F_writer_.Write(utt,F_utt);
 
     // Get the utterance specific covariance and counts
     for(int32 i = 0; i < num_frames; i++) {
@@ -55,22 +52,11 @@ namespace kaldi {
         int32 c = post[i][j].first;
         double pc = post[i][j].second;
         Vector<BaseFloat> Stc(frame);
-        SubVector<BaseFloat> Mc(M_utt,c*feat_dim_,feat_dim_);
-        Stc.AddVec(-1,Mc);
+        SubVector<BaseFloat> Fc(F_utt,c*feat_dim_,feat_dim_);
+        Stc.AddVec(-1,Fc);
         S_[c].AddVec2(pc,Stc);
       }
     }
-    N_.AddVec(1.0,N_utt);
-    // Normalize the F stats
-    for(int32 c = 0; c < num_gauss_; c++) {
-      SubVector<BaseFloat> Fc(F_utt,c*feat_dim_,feat_dim_);
-      if(N_utt(c) > 1e-6) {
-        Fc.Scale(pow(N_utt(c),-0.5));
-      } else {
-        Fc.Scale(1000);
-      }
-    } 
-    first_order_stats_writer_.Write(utt,F_utt);
     // Increment the number of utterances
     num_utt_++;
   }
@@ -81,6 +67,16 @@ namespace kaldi {
       S[c].Resize(S_[c].Dim());
       S[c].CopyFromVec(S_[c]);
       S[c].Scale(1.0/N_(c));
+    }
+  }
+
+  void FastIvectorDiagStats::GetF(Vector<BaseFloat> &F) {
+    F.Resize(num_gauss_*feat_dim_);
+    F.CopyFromVec(F_);
+    for(int32 c = 0; c < num_gauss_; c++) {
+      SubVector<BaseFloat> Fc(F,c*feat_dim_,feat_dim_);
+      if(N_(c) > 1e-3) Fc.Scale(1.0/N_(c));
+      else             Fc.Scale(1000);
     }
   }
 
@@ -97,6 +93,8 @@ namespace kaldi {
     WriteBasicType(os,binary,num_utt_);
     WriteToken(os, binary, "<N>");
     N_.Write(os,binary);
+    WriteToken(os, binary, "<F>");
+    F_.Write(os,binary);
     WriteToken(os, binary, "<S>");
     for(int32 c = 0; c < num_gauss_; c++) {
       S_[c].Write(os,binary);
@@ -132,6 +130,12 @@ namespace kaldi {
     num_gauss_ = N_.Dim();
 
     ReadToken(is, binary, &token);
+    if (token !="<F>") {
+      KALDI_ERR << "Expected <F>, got " << token;
+    }
+    F_.Read(is,binary);
+
+    ReadToken(is, binary, &token);
     if (token !="<S>") {
       KALDI_ERR << "Expected <S>, got " << token;
     }
@@ -146,7 +150,7 @@ namespace kaldi {
     }
   }
 
-  void FastIvectorDiagStats::Read(const std::string &file, Vector<BaseFloat> *N, std::vector<Vector<BaseFloat> > &S) {
+  void FastIvectorDiagStats::Read(const std::string &file, Vector<BaseFloat> *N, Vector<BaseFloat> *F, std::vector<Vector<BaseFloat> > &S) {
     bool binary;
     Input in(file, &binary);
     std::istream &is(in.Stream());
@@ -170,6 +174,12 @@ namespace kaldi {
     num_gauss_ = N->Dim();
 
     ReadToken(is, binary, &token);
+    if (token !="<F>") {
+      KALDI_ERR << "Expected <F>, got " << token;
+    }
+    F->Read(is,binary);
+
+    ReadToken(is, binary, &token);
     if (token !="<S>") {
       KALDI_ERR << "Expected <S>, got " << token;
     }
@@ -189,6 +199,7 @@ namespace kaldi {
   void FastIvectorDiagStats::AddStats(const FastIvectorDiagStats &other_stats) {
     num_utt_ += other_stats.num_utt_;
     N_.AddVec(1.0,other_stats.N_);
+    F_.AddVec(1.0,other_stats.F_);
     for(int32 c = 0; c < num_gauss_; c++) {
       S_[c].AddVec(1.0,other_stats.S_[c]);
     }
@@ -289,10 +300,8 @@ namespace kaldi {
       for(int32 j = 0; j < post[i].size(); j++) {
         int32 c = post[i][j].first;
         double pc = post[i][j].second;
-        // Ftc = (Xt - Mc)
         Vector<BaseFloat> Ftc(frame);
         Ftc.AddVec(-1,M_.Row(c));
-        // Fc = Fc + pc*Ftc
         SubVector<BaseFloat> Fc(F_utt,c*feat_dim,feat_dim);
         Fc.AddVec(pc,Ftc);
         // Nc = Nc + pc
@@ -338,7 +347,6 @@ namespace kaldi {
   }
 
   void FastIvectorFullStats::AccStatsForUtterance(std::string utt, const Matrix<BaseFloat> &feats, const Posterior &post) {
-    KALDI_ASSERT((Means_.NumRows() > 0) && (Means_.NumCols() > 0));
     KALDI_ASSERT(post.size() == feats.NumRows());
     int32 num_frames = post.size();
     Vector<BaseFloat> N_utt(num_gauss_,kSetZero);
@@ -351,7 +359,6 @@ namespace kaldi {
         double pc = post[i][j].second;
         // Ftc = (Xt - Mc)
         Vector<BaseFloat> Ftc(frame);
-        Ftc.AddVec(-1,Means_.Row(c));
         KALDI_ASSERT(c < num_gauss_);
         SubVector<BaseFloat> Fc(F_utt,c*feat_dim_,feat_dim_);
         Fc.AddVec(pc,Ftc);
@@ -359,15 +366,15 @@ namespace kaldi {
         N_utt(c) = N_utt(c) + pc;
       }
     }
-
-    // Get the utterance specific mean
-    Vector<BaseFloat> M_utt(F_utt);
+    N_.AddVec(1.0,N_utt);
+    F_.AddVec(1.0,F_utt);
+    stats_N_writer_.Write(utt,N_utt);
+    N_utt.ApplyFloor(1e-3);
     for(int32 c = 0; c < num_gauss_; c++) {
-      SubVector<BaseFloat> Mc(M_utt,c*feat_dim_,feat_dim_);
-      Mc.AddVec(N_utt(c),Means_.Row(c));
-      if (N_utt(c) > 1e-3) { Mc.Scale(1.0/N_utt(c)); }
-      else Mc.Scale(1000);
+      SubVector<BaseFloat> Fc(F_utt,c*feat_dim_,feat_dim_);
+      Fc.Scale(1.0/N_utt(c));
     }
+    stats_F_writer_.Write(utt,F_utt);
 
     // Get the utterance specific covariance and counts
     for(int32 i = 0; i < num_frames; i++) {
@@ -376,23 +383,11 @@ namespace kaldi {
         int32 c = post[i][j].first;
         double pc = post[i][j].second;
         Vector<BaseFloat> Stc(frame);
-        SubVector<BaseFloat> Mc(M_utt,c*feat_dim_,feat_dim_);
-        Stc.AddVec(-1,Mc);
+        SubVector<BaseFloat> Fc(F_utt,c*feat_dim_,feat_dim_);
+        Stc.AddVec(-1,Fc);
         S_[c].AddVec2(pc,Stc);
       }
     }
-    N_.AddVec(1.0,N_utt);
-
-    // Normalize the F stats
-    for(int32 c = 0; c < num_gauss_; c++) {
-      SubVector<BaseFloat> Fc(F_utt,c*feat_dim_,feat_dim_);
-      if(N_utt(c) > 1e-6) {
-        Fc.Scale(pow(N_utt(c),-0.5));
-      } else {
-        Fc.Scale(1000);
-      }
-    }
-    first_order_stats_writer_.Write(utt,F_utt);
     // Increment the number of utterances
     num_utt_++;
   }
@@ -403,6 +398,16 @@ namespace kaldi {
       S[c].Resize(S_[c].NumRows());
       S[c].CopyFromSp(S_[c]);
       S[c].Scale(1.0/N_(c));
+    }
+  }
+
+  void FastIvectorFullStats::GetF(Vector<BaseFloat> &F) {
+    F.Resize(num_gauss_*feat_dim_);
+    F.CopyFromVec(F_);
+    for(int32 c = 0; c < num_gauss_; c++) {
+      SubVector<BaseFloat> Fc(F,c*feat_dim_,feat_dim_);
+      if(N_(c) > 1e-3) Fc.Scale(1.0/N_(c));
+      else             Fc.Scale(1000);
     }
   }
 
@@ -419,6 +424,8 @@ namespace kaldi {
     WriteBasicType(os,binary,num_utt_);
     WriteToken(os, binary, "<N>");
     N_.Write(os,binary);
+    WriteToken(os, binary, "<F>");
+    F_.Write(os,binary);
     WriteToken(os, binary, "<S>");
     for(int32 c = 0; c < num_gauss_; c++) {
       S_[c].Write(os,binary);
@@ -454,6 +461,12 @@ namespace kaldi {
     num_gauss_ = N_.Dim();
 
     ReadToken(is, binary, &token);
+    if (token !="<F>") {
+      KALDI_ERR << "Expected <F>, got " << token;
+    }
+    F_.Read(is,binary);
+
+    ReadToken(is, binary, &token);
     if (token !="<S>") {
       KALDI_ERR << "Expected <S>, got " << token;
     }
@@ -469,7 +482,7 @@ namespace kaldi {
     }
   }
 
-  void FastIvectorFullStats::Read(const std::string &file, Vector<BaseFloat> *N, std::vector<SpMatrix<BaseFloat> > &S) {
+  void FastIvectorFullStats::Read(const std::string &file, Vector<BaseFloat> *N, Vector<BaseFloat> *F, std::vector<SpMatrix<BaseFloat> > &S) {
     bool binary;
     Input in(file, &binary);
     std::istream &is(in.Stream());
@@ -493,6 +506,12 @@ namespace kaldi {
     num_gauss_ = N->Dim();
 
     ReadToken(is, binary, &token);
+    if (token !="<F>") {
+      KALDI_ERR << "Expected <F>, got " << token;
+    }
+    F->Read(is,binary);
+
+    ReadToken(is, binary, &token);
     if (token !="<S>") {
       KALDI_ERR << "Expected <S>, got " << token;
     }
@@ -512,6 +531,7 @@ namespace kaldi {
   void FastIvectorFullStats::AddStats(const FastIvectorFullStats &other_stats) {
     num_utt_ += other_stats.num_utt_;
     N_.AddVec(1.0,other_stats.N_);
+    F_.AddVec(1.0,other_stats.F_);
     for(int32 c = 0; c < num_gauss_; c++) {
       S_[c].AddSp(1.0,other_stats.S_[c]);
     }

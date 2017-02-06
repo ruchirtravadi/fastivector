@@ -64,6 +64,7 @@ else
 fi
 
 ubm_path=`dirname $ubm_mdl`
+
 # Do Gaussian selection and posterior extraction
 if [ $stage -le -2 ]; then
   fgmm-global-to-gmm $ubm_mdl $ubm_path/full_to_diag.dubm
@@ -85,12 +86,14 @@ fi
 
 # Extract the stats
 echo "$0: Extracting stats for ivector model estimation"
+post_dim=$(fgmm-global-info $ubm_mdl | grep number | cut -f 4 -d " ")
 $cmd JOB=1:$nj $stats_dir/log/acc_stats.JOB.log \
   fast-ivector-full-acc-stats \
     --p=$p \
     --ivec-dim=$ivec_dim \
-    $ubm_mdl "$feats" "ark,o:gunzip -c $stats_dir/post.JOB.gz|" \
-    ark:$stats_dir/stats_F.JOB $stats_dir/stats_NS.JOB || touch $stats_dir/.error &
+    "$feats" "ark,o:gunzip -c $stats_dir/post.JOB.gz|" $post_dim \
+    ark:$stats_dir/stats_N.JOB ark:$stats_dir/stats_F.JOB \
+    $stats_dir/stats_NFS.JOB || touch $stats_dir/.error &
 wait
 [ -f $stats_dir/.error ] && echo "Error accumulating stats" && rm $stats_dir/.error && exit 1;
 echo "Succeeded in obtaining stats"

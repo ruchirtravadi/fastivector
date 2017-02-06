@@ -25,7 +25,8 @@ int main(int argc, char *argv[]) {
   try {
       const char *usage =
       "Extract ivectors from the full covariance fast ivector model\n"
-      "Usage:  fast-ivector-full-extract [options] <fast-ivec-mdl> <feats-rspecifier> <post-rspecifier> <ivec-wspecifier>\n"
+      "Usage:  fast-ivector-full-extract [options] <ivec-mdl> <feats-rspecifier>\n"
+      "                                      <post-rspecifier> <ivec-wspecifier>\n"
       "e.g.: fast-ivector-full-extract fast-ivec.mdl scp:feats.scp ark:post.ark ark:ivectors.ark\n";
 
     ParseOptions po(usage);

@@ -25,8 +25,8 @@ int main(int argc, char *argv[]) {
   try {
       const char *usage =
       "Get Q = Orth(Y) for randomized SVD. For details, refer to : \n"
-      "\'\'Finding structure with randomness: Probabilistic algorithms for constructing approximate matrix decompositions\'\'\n"
-      "N Halko et al, SIAM 2011\n"
+      "\'\'Finding structure with randomness: Probabilistic algorithms for\n"
+      "constructing approximate matrix decompositions\'\', N Halko et al, SIAM 2011\n"
       "Usage:  fast-ivector-full-randsvd-get-q [options] <mat-rxfilename> <mat-wxfilename> \n"
       "e.g.: fast-ivector-full-randsvd-get-q  Y.mat Q.mat\n";
 

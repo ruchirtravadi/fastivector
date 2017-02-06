@@ -40,25 +40,30 @@ namespace kaldi {
     }
   };
 
-  // Class to hold zeroth and second order statistics for diagonal covariance ivector model estimation
+  // Class to hold accumulated statistics for diagonal covariance ivector model estimation
   class FastIvectorDiagStats {
     public:
       // Constructors
       FastIvectorDiagStats() {}
-      FastIvectorDiagStats(Matrix<BaseFloat> &Means, std::string first_order_stats_wspecifier) : 
-        num_utt_(0), Means_(Means), first_order_stats_wspecifier_(first_order_stats_wspecifier) {
-        num_gauss_ = Means.NumRows(); feat_dim_ = Means.NumCols(); 
-        S_.resize(num_gauss_,Vector<BaseFloat>(feat_dim_,kSetZero));
+      FastIvectorDiagStats(int32 num_gauss,int32 feat_dim,
+                           std::string stats_N_wspecifier, 
+                           std::string stats_F_wspecifier) : 
+        num_gauss_(num_gauss), feat_dim_(feat_dim), num_utt_(0),
+        stats_F_wspecifier_(stats_F_wspecifier),
+        stats_N_wspecifier_(stats_N_wspecifier) {
         N_.Resize(num_gauss_);
-        first_order_stats_writer_.Open(first_order_stats_wspecifier_);
+        F_.Resize(num_gauss_*feat_dim_,kSetZero);
+        S_.resize(num_gauss_,Vector<BaseFloat>(feat_dim_,kSetZero));
+        stats_N_writer_.Open(stats_N_wspecifier_),
+        stats_F_writer_.Open(stats_F_wspecifier_);
       }
       
-      // Read the stats (other than first order stats)
+      // Read the accumulated stats
       void Read(const std::string &file);
       void Read(std::istream &is, bool binary);
       // Read directly into specified pointers
-      void Read(const std::string &file, Vector<BaseFloat> *N, std::vector<Vector<BaseFloat> > &S);
-      // Write the stats (other than first order stats, those are written as soon as they are accumulated)
+      void Read(const std::string &file, Vector<BaseFloat> *N, Vector<BaseFloat> *F, std::vector<Vector<BaseFloat> > &S);
+      // Write the accumulated stats (utterance stats are written separately)
       void Write(const std::string &file, bool binary) const;
       void Write(std::ostream &os, bool binary) const;
 
@@ -66,6 +71,7 @@ namespace kaldi {
       int64 GetNumUtt() { return num_utt_; }
       void GetN(Vector<BaseFloat> *N) { N->Resize(N_.Dim()); N->CopyFromVec(N_); }
       BaseFloat GetN(int32 c) { return N_(c);}
+      void GetF(Vector<BaseFloat> &F);
       void GetS(std::vector<Vector<BaseFloat> > &S);
       void GetS(Vector<BaseFloat> *Sc, int32 c) { Sc->Resize(S_[c].Dim()); Sc->CopyFromVec(S_[c]); Sc->Scale(1.0/N_(c));}
 
@@ -84,15 +90,13 @@ namespace kaldi {
       int32 num_gauss_,feat_dim_;
       // Number of utterances for which stats are accumulated
       int64 num_utt_;
-      // UBM means
-      Matrix<BaseFloat> Means_;
       // Sample covariance matrices for each component
       std::vector<Vector<BaseFloat> > S_;
-      // Zeroth order stats
-      Vector<BaseFloat> N_;
-      // Writer for First order stats
-      std::string first_order_stats_wspecifier_;
-      BaseFloatVectorWriter first_order_stats_writer_;
+      // Zeroth, first order stats
+      Vector<BaseFloat> N_, F_;
+      // Writers for zeroth, first order stats
+      std::string stats_F_wspecifier_, stats_N_wspecifier_;
+      BaseFloatVectorWriter stats_F_writer_, stats_N_writer_;
   };
 
   // Diagonal Covariance Fast Ivector Model Class
@@ -140,26 +144,31 @@ namespace kaldi {
       Vector<BaseFloat> D_sq_;
   };
 
-  // Class to hold zeroth and second order statistics for full covariance ivector model estimation
+  // Class to hold accumulated statistics for full covariance ivector model estimation
   class FastIvectorFullStats {
     public:
       // Constructors
       FastIvectorFullStats() {}
-      FastIvectorFullStats(Matrix<BaseFloat> &Means, std::string first_order_stats_wspecifier) :
-        num_utt_(0), Means_(Means), first_order_stats_wspecifier_(first_order_stats_wspecifier) {
-        num_gauss_ = Means.NumRows(); feat_dim_ = Means.NumCols();
-        S_.resize(num_gauss_,SpMatrix<BaseFloat>(feat_dim_,kSetZero));
+      FastIvectorFullStats(int32 num_gauss, int32 feat_dim, 
+                           std::string stats_N_wspecifier,
+                           std::string stats_F_wspecifier) :
+        num_gauss_(num_gauss), feat_dim_(feat_dim), num_utt_(0), 
+        stats_N_wspecifier_(stats_N_wspecifier),
+        stats_F_wspecifier_(stats_F_wspecifier) {
         N_.Resize(num_gauss_);
-        first_order_stats_writer_.Open(first_order_stats_wspecifier_);
+        F_.Resize(num_gauss_*feat_dim_,kSetZero);
+        S_.resize(num_gauss_,SpMatrix<BaseFloat>(feat_dim_,kSetZero));
+        stats_N_writer_.Open(stats_N_wspecifier_);
+        stats_F_writer_.Open(stats_F_wspecifier_);
       }
 
       // IO functions
-      // Read the stats (other than first order stats)
+      // Read the accumulated stats
       void Read(const std::string &file);
       void Read(std::istream &is, bool binary);
       // Read directly into specified pointers
-      void Read(const std::string &file, Vector<BaseFloat> *N, std::vector<SpMatrix<BaseFloat> > &S);
-      // Write the stats (other than first order stats, those are written as soon as they are accumulated)
+      void Read(const std::string &file, Vector<BaseFloat> *N, Vector<BaseFloat> *F, std::vector<SpMatrix<BaseFloat> > &S);
+      // Write the accumulated stats (utterance stats are written separately)
       void Write(const std::string &file, bool binary) const;
       void Write(std::ostream &os, bool binary) const;
 
@@ -167,6 +176,7 @@ namespace kaldi {
       int64 GetNumUtt() { return num_utt_; }
       void GetN(Vector<BaseFloat> *N) { N->Resize(N_.Dim()); N->CopyFromVec(N_); }
       BaseFloat GetN(int32 c) { return N_(c);}
+      void GetF(Vector<BaseFloat> &F);
       void GetS(std::vector<SpMatrix<BaseFloat> > &S);
       void GetS(SpMatrix<BaseFloat> *Sc, int32 c) { Sc->Resize(S_[c].NumRows()); Sc->CopyFromSp(S_[c]); Sc->Scale(1.0/N_(c));}
 
@@ -185,15 +195,13 @@ namespace kaldi {
       int32 num_gauss_,feat_dim_;
       // Number of utterances for which stats are accumulated
       int64 num_utt_;
-      // UBM means
-      Matrix<BaseFloat> Means_;
       // Sample covariance matrices for each component
       std::vector<SpMatrix<BaseFloat> > S_;
-      // Zeroth order stats
-      Vector<BaseFloat> N_;
-      // Writer for First order stats
-      std::string first_order_stats_wspecifier_;
-      BaseFloatVectorWriter first_order_stats_writer_;
+      // Zeroth, first order stats
+      Vector<BaseFloat> N_, F_;
+      // Writer for zeroth, first order stats
+      std::string stats_N_wspecifier_,stats_F_wspecifier_;
+      BaseFloatVectorWriter stats_N_writer_,stats_F_writer_;
   };
 
 
@@ -207,7 +215,7 @@ namespace kaldi {
       FastIvectorFull(const Matrix<BaseFloat> &M, const std::vector<SpMatrix<BaseFloat> >& S_,
                                    const Matrix<BaseFloat> &S_Inv_T, const Vector<BaseFloat> &D);
 
-      // Return the estimated i-vector from provided features and psoteriors
+      // Return the estimated i-vector from provided features and posteriors
       void GetIvector(const Matrix<BaseFloat> &feats, const Posterior &post, Vector<BaseFloat> &x);
 
       // Return the entire subspace matrix

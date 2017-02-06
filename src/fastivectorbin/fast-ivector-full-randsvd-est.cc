@@ -24,12 +24,15 @@ int main(int argc, char *argv[]) {
   typedef kaldi::int64 int64;
   try {
       const char *usage =
-      "Obtain Maximum Likelihood estimate of the parameters of a full covariance fast ivector model from accumulated stats\n"
+      "Obtain Maximum Likelihood estimate of the parameters of a full\n"
+      "covariance fast ivector model from accumulated stats\n"
       "The algorithm is based on randomized SVD. For details, refer to : \n"
-      "\'\'Finding structure with randomness: Probabilistic algorithms for constructing approximate matrix decompositions\'\'\n"
-      "N Halko et al, SIAM 2011\n"
-      "Usage:  fast-ivector-full-est-randsvd [options] <B1> <B2> ... <Bn> <Q> <NS-stats> <full-ubm-rxfilename> <ivec-mdl-wxfilename> \n"
-      "e.g.: fast-ivector-full-est-randsvd B.1.mat B.2.mat Q.mat NS.stats final.dubm fastivec.mdl\n";
+      "\'\'Finding structure with randomness: Probabilistic algorithms for\n"
+      "constructing approximate matrix decompositions\'\', N Halko et al, SIAM 2011\n"
+      "Usage:  fast-ivector-full-est-randsvd [options] <B1> ... <Bn> <Q>\n" 
+      "        <stats-NFS> <ivec-mdl-wxfilename> \n"
+      "e.g.: fast-ivector-full-randsvd-est B.1.mat B.2.mat Q.mat\n" 
+      "      stats_NFS.global fastivec.mdl\n";
 
     ParseOptions po(usage);
     FastIvectorEstimationOptions est_opts;
@@ -38,16 +41,15 @@ int main(int argc, char *argv[]) {
     est_opts.Register(&po);
 
     po.Read(argc, argv);
-    if (po.NumArgs() < 5) {
+    if (po.NumArgs() < 4) {
       po.PrintUsage();
       exit(1);
     }
     std::string model_outfilename = po.GetArg(po.NumArgs()), 
-                full_gmm_rxfilename = po.GetArg(po.NumArgs()-1),
-                stats_NS_rxfilename = po.GetArg(po.NumArgs()-2),
-                Q_rxfilename = po.GetArg(po.NumArgs()-3);
+                stats_NFS_rxfilename = po.GetArg(po.NumArgs()-1),
+                Q_rxfilename = po.GetArg(po.NumArgs()-2);
 
-    int32 num_matrices = po.NumArgs() - 4;
+    int32 num_matrices = po.NumArgs() - 3;
     Timer time;
     // Read and combine B matrices
     std::vector<Matrix<BaseFloat> > B_vec(num_matrices);
@@ -69,24 +71,24 @@ int main(int argc, char *argv[]) {
     ReadKaldiObject(Q_rxfilename,&Q);
 
     // Read the zeroth and second order stats
-    FastIvectorFullStats stats_NS;
-    stats_NS.Read(stats_NS_rxfilename);
+    FastIvectorFullStats stats_NFS;
+    stats_NFS.Read(stats_NFS_rxfilename);
 
-    int32 num_gauss = stats_NS.NumGauss(), feat_dim = stats_NS.FeatDim();
+    int32 num_gauss = stats_NFS.NumGauss(), feat_dim = stats_NFS.FeatDim();
 
     // Get the normalization matrices
     std::vector<TpMatrix<BaseFloat> > invsqrt_S(num_gauss);
     std::vector<SpMatrix<BaseFloat> > S(num_gauss);
     for(int32 c = 0; c < num_gauss; c++) {
-      stats_NS.GetS(&S[c],c);
+      stats_NFS.GetS(&S[c],c);
       SpMatrix<BaseFloat> inv_inv_Sc(S[c]);
       inv_inv_Sc.Invert();
       invsqrt_S[c].Resize(feat_dim,kSetZero);
       invsqrt_S[c].Cholesky(inv_inv_Sc);
     }
     Vector<BaseFloat> N;
-    stats_NS.GetN(&N);
-    int64 num_utt = stats_NS.GetNumUtt();
+    stats_NFS.GetN(&N);
+    int64 num_utt = stats_NFS.GetNumUtt();
     BaseFloat avg_utt_dur =  N.Sum()/num_utt;
 
     // Make sure all the dimensions are consistent with provided options
@@ -114,7 +116,8 @@ int main(int argc, char *argv[]) {
       if (D_T(i) > 0) {
         D_T(i) = sqrt(D_T(i));
       } else {
-        KALDI_WARN << "Unable to estimate " << k << " dimensional subspace. Returning subspace of dimension " << i << " instead.";
+        KALDI_WARN << "Unable to estimate " << k << " dimensional subspace."
+                   << "Returning subspace of dimension " << i << " instead.";
         k = i;
         D_T = D_T.Range(0,k);
         U = U.Range(0,m,0,k);
@@ -132,9 +135,8 @@ int main(int argc, char *argv[]) {
     }
     S_Inv_T.MulColsVec(D_T);
     // Create and write the ivector model
-    FullGmm full_gmm;
-    ReadKaldiObject(full_gmm_rxfilename, &full_gmm);
-    Matrix<BaseFloat> M; full_gmm.GetMeans(&M);
+    Vector<BaseFloat> F_mean; stats_NFS.GetF(F_mean);
+    Matrix<BaseFloat> M(num_gauss,feat_dim); M.CopyRowsFromVec(F_mean);
     FastIvectorFull FastIvec_Model(M,S,S_Inv_T,D_T);
     FastIvec_Model.Write(model_outfilename,binary);    
     KALDI_LOG << "Final model obtained after SVD in " << time.Elapsed() - t << " s";

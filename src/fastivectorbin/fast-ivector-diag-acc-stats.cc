@@ -25,11 +25,12 @@ int main(int argc, char *argv[]) {
   typedef kaldi::int64 int64;
   try {
       const char *usage =
-      "Accumulate stats for Maximum Likelihood estimation of the parameters of a diagonal covariance fast ivector model\n"
-      "Usage:  fast-ivector-diag-est [options] <diag-ubm-mdl> <feats-rspecifier> <post-rspecifier> \n"
-      "        <first-order-stats-wspecifier> <other-stats-outfilename>\n"
-      "IMP NOTE : scp option is not currently supported for first-order-stats-wspecifier\n"
-      "e.g.: fast-ivector-diag-est --ivec-dim 200 diag-ubm.mdl scp:feats.scp ark:post.ark stats.\n";
+      "Accumulate stats for Maximum Likelihood estimation of the parameters"
+      "of a diagonal covariance fast ivector model\n"
+      "Usage:  fast-ivector-diag-est [options] <feats-rspecifier> <post-rspecifier>\n"
+      "        <post-dim> <stats-N-wspecifier> <stats-F-wspecifier> <stats-wxfilename>\n"
+      "e.g.: fast-ivector-diag-acc-stats --ivec-dim 200 scp:feats.scp ark:post.ark\n"
+      "      2048 ark:stats_N.ark ark:stats_F.ark stats_NFS.global";
 
     ParseOptions po(usage);
     FastIvectorEstimationOptions est_opts;
@@ -38,28 +39,29 @@ int main(int argc, char *argv[]) {
     est_opts.Register(&po);
 
     po.Read(argc, argv);
-    if (po.NumArgs() != 5) {
+    if (po.NumArgs() != 6) {
       po.PrintUsage();
       exit(1);
     }
 
     // Read the specified inputs
-    std::string diag_gmm_rxfilename = po.GetArg(1),
-        feats_rspecifier = po.GetArg(2),
-        post_rspecifier = po.GetArg(3),
-        first_order_stats_wspecifier = po.GetArg(4),
-        stats_outfilename = po.GetArg(5);
-
-    DiagGmm diag_gmm;
-    ReadKaldiObject(diag_gmm_rxfilename, &diag_gmm);
-    Matrix<BaseFloat> Means; diag_gmm.GetMeans(&Means);
-    FastIvectorDiagStats fast_ivec_diag_stats(Means,first_order_stats_wspecifier);
+    std::string feats_rspecifier = po.GetArg(1),
+        post_rspecifier = po.GetArg(2),
+        // third arg is an integer post_dim
+        stats_N_wspecifier = po.GetArg(4),
+        stats_F_wspecifier = po.GetArg(5),
+        stats_outfilename = po.GetArg(6);
 
     // Obtain stats for all the utterances
     SequentialBaseFloatMatrixReader feature_reader(feats_rspecifier);
     RandomAccessPosteriorReader post_reader(post_rspecifier);
     Timer time;
-    int32 num_utt = 0;
+    Matrix<BaseFloat> feats = feature_reader.Value();
+    int32 num_utt = 0, feat_dim = feats.NumCols(),
+          num_gauss = atoi(po.GetArg(3).c_str());
+
+    FastIvectorDiagStats fast_ivec_diag_stats(num_gauss,feat_dim,stats_N_wspecifier,
+                                              stats_F_wspecifier);
 
     for ( ; !feature_reader.Done(); feature_reader.Next()) {
       num_utt++;
@@ -67,7 +69,8 @@ int main(int argc, char *argv[]) {
       Matrix<BaseFloat> feats = feature_reader.Value();
       Posterior post = post_reader.Value(utt);
       fast_ivec_diag_stats.AccStatsForUtterance(utt,feats,post);
-      KALDI_VLOG(3) << "Processed utterance " << utt << ", total " << num_utt << " utterances in " << time.Elapsed() << "s";
+      KALDI_VLOG(3) << "Processed utterance " << utt << ", total " << num_utt 
+                    << " utterances in " << time.Elapsed() << "s";
     }
     feature_reader.Close();
 

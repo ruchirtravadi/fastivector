@@ -24,9 +24,11 @@ int main(int argc, char *argv[]) {
   typedef kaldi::int64 int64;
   try {
       const char *usage =
-      "Obta for a diagonal covariance fast ivector model\n"
-      "Usage:  fast-ivector-diag-combine-stats [options] <stats.1> <stats.2> ... <stats.n> <stats-wxfilename> \n"
-      "e.g.: fast-ivector-diag-combine-stats stats.1 stats.2 NS.stats\n";
+      "Combine stats for a diagonal covariance fast ivector model\n"
+      "Usage:  fast-ivector-diag-combine-stats [options] <stats-1> ... <stats-n>\n" 
+      "                                                  <stats-wxfilename> \n"
+      "e.g.: fast-ivector-diag-combine-stats stats_NFS.1 stats_NFS.2\n"
+      "                                      stats_NFS.global\n";
 
     ParseOptions po(usage);
     bool binary = true;

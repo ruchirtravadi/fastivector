@@ -25,10 +25,12 @@ int main(int argc, char *argv[]) {
   try {
       const char *usage =
       "Power iteration : Get Y <- FF'*Y for randomized SVD. For details, refer to : \n"
-      "\'\'Finding structure with randomness: Probabilistic algorithms for constructing approximate matrix decompositions\'\'\n"
-      "N Halko et al, SIAM 2011\n"
-      "Usage:  fast-ivector-full-randsvd-power-iter [options] <NS-stats-rxfilename> <F-stats-rspecifier> <mat-rxfilename> <mat-wxfilename>\n"
-      "e.g.: fast-ivector-full-randsvd-power-iter  stats_NS ark:stats_F.1 Y.powiter0.mat Y.powiter1.1.mat \n";
+      "\'\'Finding structure with randomness: Probabilistic algorithms for\n"
+      "constructing approximate matrix decompositions\'\', N Halko et al, SIAM 2011\n"
+      "Usage:  fast-ivector-full-randsvd-power-iter [options] <stats-NFS>\n"
+      "<stats-N-rspecifier> <stats-F-rspecifier> <mat-rxfilename> <mat-wxfilename>\n"
+      "e.g.: fast-ivector-full-randsvd-power-iter stats_NFS.global ark:stats_N.1\n"
+      "      ark:stats_F.1 Y.powiter0.mat Y.powiter1.1.mat";
 
     ParseOptions po(usage);
     FastIvectorEstimationOptions est_opts;
@@ -37,27 +39,29 @@ int main(int argc, char *argv[]) {
     est_opts.Register(&po);
 
     po.Read(argc, argv);
-    if (po.NumArgs() != 4) {
+    if (po.NumArgs() != 5) {
       po.PrintUsage();
       exit(1);
     }
-    std::string stats_NS_rxfilename = po.GetArg(1),
-                stats_F_rspecifier = po.GetArg(2),
-                mat_rxfilename = po.GetArg(3),
-                mat_wxfilename = po.GetArg(4);
+    std::string stats_NFS_rxfilename = po.GetArg(1),
+                stats_N_rspecifier = po.GetArg(2),
+                stats_F_rspecifier = po.GetArg(3),
+                mat_rxfilename = po.GetArg(4),
+                mat_wxfilename = po.GetArg(5);
     Timer time;
 
     // Read the zeroth and second order stats
-    FastIvectorFullStats stats_NS;
-    stats_NS.Read(stats_NS_rxfilename);
+    FastIvectorFullStats stats_NFS;
+    stats_NFS.Read(stats_NFS_rxfilename);
 
-    int32 num_gauss = stats_NS.NumGauss(), feat_dim = stats_NS.FeatDim();
+    int32 num_gauss = stats_NFS.NumGauss(), feat_dim = stats_NFS.FeatDim();
 
     // Get the normalization matrices
+    Vector<BaseFloat> F_mean; stats_NFS.GetF(F_mean);
     std::vector<TpMatrix<BaseFloat> > invsqrt_S(num_gauss);
     for(int32 c = 0; c < num_gauss; c++) {
       SpMatrix<BaseFloat> inv_Sc;
-      stats_NS.GetS(&inv_Sc,c);
+      stats_NFS.GetS(&inv_Sc,c);
       inv_Sc.Invert();
       invsqrt_S[c].Resize(feat_dim,kSetZero);
       invsqrt_S[c].Cholesky(inv_Sc);
@@ -73,20 +77,28 @@ int main(int argc, char *argv[]) {
     int32 batch_size = est_opts.batch_size, p = est_opts.p, k = est_opts.ivec_dim, m = num_gauss*feat_dim;
     KALDI_ASSERT(k + p == Y.NumCols());
     Matrix<BaseFloat> Y_out(m,k+p,kSetZero);
-    SequentialBaseFloatVectorReader stats_reader(stats_F_rspecifier);
-    Matrix<BaseFloat> F_batch(batch_size,m);
+    SequentialBaseFloatVectorReader stats_F_reader(stats_F_rspecifier);
+    RandomAccessBaseFloatVectorReader stats_N_reader(stats_N_rspecifier);
+    Matrix<BaseFloat> N_batch(batch_size,num_gauss),
+                      F_batch(batch_size,m);
     int32 count = 0;
-    while(! stats_reader.Done()) {
+    while(! stats_F_reader.Done()) {
       int32 j;
       for(j = 0; j < batch_size; j++) {
-        if(stats_reader.Done()) break;
-        std::string utt = stats_reader.Key();
-        SubVector<BaseFloat> F(F_batch.Row(j));
-        F.CopyFromVec(stats_reader.Value());
-        stats_reader.Next();
+        if(stats_F_reader.Done()) break;
+        std::string utt = stats_F_reader.Key();
+        SubVector<BaseFloat> F(F_batch.Row(j)),
+                             N(N_batch.Row(j));
+        F.CopyFromVec(stats_F_reader.Value());
+        N.CopyFromVec(stats_N_reader.Value(utt));
+        N.ApplyFloor(1e-3); N.ApplyPow(0.5);
+        stats_F_reader.Next();
       }
       // Take the submatrix for the last batch
-      SubMatrix<BaseFloat> F_submat(F_batch,0,j,0,m);
+      SubMatrix<BaseFloat> F_submat(F_batch,0,j,0,m),
+                           N_submat(N_batch,0,j,0,num_gauss);
+      F_submat.AddVecToRows(-1.0,F_mean);
+      F_submat.MulRowsGroupMat(N_submat);
       Matrix<BaseFloat> F_normalized(m,j,kSetZero);
       // Normalize the stats
       for(int32 c = 0; c < num_gauss; c++) {
