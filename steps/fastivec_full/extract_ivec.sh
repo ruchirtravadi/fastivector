@@ -16,7 +16,7 @@
 # Begin configuration section.
 nj=16
 cmd="run.pl"
-stage=-2
+stage=-1
 num_gselect=30 # Gaussian-selection using diagonal model: number of Gaussians to select
 min_post=0.0001 # Minimum posterior to use (posteriors below this are pruned out)
 ivec_dim=-1
@@ -36,7 +36,7 @@ if [ $# != 3 ]; then
   echo "  --config <config-file>                           # config containing options"
   echo "  --cmd (utils/run.pl|utils/queue.pl <queue opts>) # how to run jobs."
   echo "  --nj <n|4>                                      # Number of jobs (also see num-processes and num-threads)"
-  echo "  --stage <stage|-2>                               # To control partial reruns"
+  echo "  --stage <stage|-1>                               # To control partial reruns"
   echo "  --num-gselect <n|20>                             # Number of Gaussians to select using"
   echo "                                                   # diagonal model."
   echo "  --min-post <min_post|0.0001>                     # Minimum posterior value"
@@ -67,10 +67,11 @@ else
 fi
 
 # Do Gaussian selection and posterior extraction
-if [ $stage -le -2 ]; then
-  $cmd $ivec_out_dir/log/convert.log \
-    fgmm-global-to-gmm $ivec_mdl_dir/ubm/final.ubm $ivec_mdl_dir/ubm/full_to_diag.dubm || exit 1;
+if [ ! -f $ivec_mdl_dir/ubm/full_to_diag.dubm ]; then
+  echo "WARNING : $ivec_mdl_dir/ubm/full_to_diag.dubm doesn't exist, but should have been created during training"
+  fgmm-global-to-gmm $ivec_mdl_dir/ubm/final.ubm $ivec_mdl_dir/ubm/full_to_diag.dubm || exit 1;  
 fi
+  
 if [ $stage -le -1 ]; then
   echo $nj > $ivec_out_dir/num_jobs
   echo "$0: Doing Gaussian selection and posterior computation"
