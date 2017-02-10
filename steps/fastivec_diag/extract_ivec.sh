@@ -31,7 +31,7 @@ if [ -f path.sh ]; then . ./path.sh; fi
 
 if [ $# != 3 ]; then
   echo "Usage: $0 <data> <ivec-mdl-dir> <ivec-out-dir>"
-  echo " e.g.: $0 data/train exp/fast_ivec_mdl/ivec.mdl exp/fast_ivectors_train"
+  echo " e.g.: $0 data/train exp/fast_ivec_mdl exp/fast_ivectors_train"
   echo "main options (for others, see top of script file)"
   echo "  --config <config-file>                           # config containing options"
   echo "  --cmd (utils/run.pl|utils/queue.pl <queue opts>) # how to run jobs."
@@ -39,6 +39,9 @@ if [ $# != 3 ]; then
   echo "  --stage <stage|-2>                               # To control partial reruns"
   echo "  --num-gselect <n|20>                             # Number of Gaussians to select using"
   echo "                                                   # diagonal model."
+  echo "  --min-post <min_post|0.0001>                     # Minimum posterior value"
+  echo "  --ivec-dim <ivec_dim|-1>                         # ivector dimension (-1 means same as used during training)"
+  echo "  --vad-scp <vad_scp| >                            # Optionally specify an scp file for VAD"
   exit 1;
 fi
 
