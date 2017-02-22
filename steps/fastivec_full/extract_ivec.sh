@@ -56,7 +56,7 @@ mkdir -p $ivec_out_dir/log
 
 # Split the data dir for parallelization
 sdata=$data/split$nj;
-utils/split_data.sh --per-utt $data $nj || exit 1;
+utils/split_data.sh $data $nj || exit 1;
 
 # Set up features
 delta_opts=`cat $ivec_mdl_dir/ubm/delta_opts`

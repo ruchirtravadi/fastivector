@@ -52,7 +52,7 @@ stats_dir=$3
 # Split the data dir for parallelization
 mkdir -p $stats_dir/log
 sdata=$data/split$nj;
-utils/split_data.sh --per-utt $data $nj || exit 1;
+utils/split_data.sh $data $nj || exit 1;
 
 # Set up features
 ubm_dir=`dirname $ubm_mdl`
