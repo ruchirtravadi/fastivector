@@ -24,7 +24,6 @@
 #include "gmm/full-gmm.h"
 #include "itf/options-itf.h"
 #include "util/common-utils.h"
-#include "thread/kaldi-mutex.h"
 #include "hmm/posterior.h"
 
 namespace kaldi {
